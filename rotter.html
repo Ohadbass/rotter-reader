@@ -77,6 +77,16 @@
 
       <div id="reader-content" class="hidden p-6 max-w-3xl mx-auto">
         <h2 id="article-title" class="text-2xl font-bold mb-4"></h2>
+        <div id="tts-controls" class="hidden mb-4 flex items-center gap-3">
+          <button
+            id="tts-btn"
+            type="button"
+            class="bg-gray-900 hover:bg-gray-700 text-white text-sm px-4 py-1.5 rounded-full transition-colors"
+          >
+            ▶ הקריאה
+          </button>
+          <span id="tts-status" class="text-sm text-gray-500"></span>
+        </div>
         <div id="article-body" class="text-gray-800 leading-relaxed mb-6"></div>
         <hr class="border-gray-300 my-6">
         <h3 class="text-xl font-bold mb-4">תגובות</h3>
@@ -123,6 +133,9 @@
     const articleTitleEl = document.getElementById('article-title');
     const articleBodyEl = document.getElementById('article-body');
     const talkbacksListEl = document.getElementById('talkbacks-list');
+    const ttsControlsEl = document.getElementById('tts-controls');
+    const ttsBtn = document.getElementById('tts-btn');
+    const ttsStatusEl = document.getElementById('tts-status');
 
     let selectedRowEl = null;
 
@@ -344,18 +357,21 @@
       readerEmptyEl.classList.remove('hidden');
       readerLoadingEl.classList.add('hidden');
       readerContentEl.classList.add('hidden');
+      ttsControlsEl.classList.add('hidden');
     }
 
     function showReaderLoading() {
       readerEmptyEl.classList.add('hidden');
       readerLoadingEl.classList.remove('hidden');
       readerContentEl.classList.add('hidden');
+      ttsControlsEl.classList.add('hidden');
     }
 
     function showReaderArticle(title, body, talkbacks) {
       readerEmptyEl.classList.add('hidden');
       readerLoadingEl.classList.add('hidden');
       readerContentEl.classList.remove('hidden');
+      ttsControlsEl.classList.remove('hidden');
 
       articleTitleEl.textContent = title || 'ללא כותרת';
       articleBodyEl.innerHTML = body
@@ -380,6 +396,7 @@
     }
 
     async function loadArticle(url, rowEl, listTitle) {
+      stopReading();
       highlightRow(rowEl);
       showReaderLoading();
 
@@ -489,6 +506,71 @@
 
     refreshBtn.addEventListener('click', fetchScoops);
     fetchScoops();
+
+    let isSpeaking = false;
+    let currentUtterance = null;
+
+    const TTS_PLAY_LABEL = '▶ הקריאה';
+    const TTS_STOP_LABEL = '⏹ עצור';
+
+    function resetTtsButton() {
+      ttsBtn.textContent = TTS_PLAY_LABEL;
+      isSpeaking = false;
+      currentUtterance = null;
+    }
+
+    function stopReading() {
+      window.speechSynthesis.cancel();
+      resetTtsButton();
+    }
+
+    function startReading() {
+      window.speechSynthesis.cancel();
+
+      const title = articleTitleEl.textContent.trim();
+      const body = articleBodyEl.innerText.trim();
+      const combinedText = `${title}. ${body}`;
+
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length === 0) {
+        window.speechSynthesis.addEventListener(
+          'voiceschanged',
+          () => startReading(),
+          { once: true }
+        );
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(combinedText);
+      currentUtterance = utterance;
+      utterance.lang = 'he-IL';
+
+      const hebrewVoice = voices.find((voice) => voice.lang.startsWith('he'));
+      if (hebrewVoice) utterance.voice = hebrewVoice;
+
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+
+      utterance.onstart = () => {
+        ttsBtn.textContent = TTS_STOP_LABEL;
+        isSpeaking = true;
+      };
+
+      utterance.onend = () => {
+        resetTtsButton();
+      };
+
+      utterance.onerror = () => {
+        resetTtsButton();
+      };
+
+      window.speechSynthesis.speak(utterance);
+    }
+
+    ttsBtn.addEventListener('click', () => {
+      if (isSpeaking) stopReading();
+      else startReading();
+    });
   </script>
 </body>
 </html>
