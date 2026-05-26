@@ -532,7 +532,12 @@
     function buildReadableText() {
       const clone = articleBodyEl.cloneNode(true);
 
-      clone.querySelectorAll('table').forEach((el) => el.remove());
+      clone.querySelectorAll('table').forEach((table) => {
+        const text = table.textContent || '';
+        if (text.includes('חבר מתאריך') || text.includes('הודעות')) {
+          table.remove();
+        }
+      });
 
       const metadataToRemove = [];
       clone.querySelectorAll('*').forEach((el) => {
