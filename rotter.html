@@ -539,17 +539,9 @@
         }
       });
 
-      const linkPrompts = ['לחץ כאן', 'Telegram', 'telegram', 'Click here', 'טוויטר', 'facebook', 'Facebook'];
-      const arrowEnds = ['←', '→', '⇐', '⇒'];
+      clone.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((el) => el.remove());
 
-      clone.querySelectorAll('a').forEach((anchor) => {
-        const text = anchor.textContent.trim();
-        const hasPrompt = linkPrompts.some((substring) => text.includes(substring));
-        const isShortArrowLink = text.length < 60 && arrowEnds.some((arrow) => text.endsWith(arrow));
-        if (hasPrompt || isShortArrowLink) {
-          anchor.remove();
-        }
-      });
+      clone.querySelectorAll('a').forEach((el) => el.remove());
 
       return clone.innerText.replace(/\n{2,}/g, '\n').trim();
     }
