@@ -7,7 +7,11 @@ const PORT = 3001;
 const ROTTER_URL = 'https://rotter.net/scoopscache.html';
 const HTML_FILE = path.join(__dirname, 'rotter.html');
 
-function fetchUrl(rawUrl) {
+function fetchUrl(rawUrl, maxRedirects = 5) {
+  if (maxRedirects <= 0) {
+    return Promise.reject(new Error('Too many redirects'));
+  }
+
   return new Promise((resolve, reject) => {
     const client = rawUrl.startsWith('https:') ? https : http;
 
@@ -20,6 +24,17 @@ function fetchUrl(rawUrl) {
           },
         },
         (res) => {
+          const redirectCodes = [301, 302, 303, 307, 308];
+          if (redirectCodes.includes(res.statusCode) && res.headers.location) {
+            let location = res.headers.location;
+            if (location.startsWith('/')) {
+              location = 'https://rotter.net' + location;
+            }
+            res.resume();
+            fetchUrl(location, maxRedirects - 1).then(resolve).catch(reject);
+            return;
+          }
+
           if (res.statusCode && res.statusCode >= 400) {
             reject(new Error(`HTTP ${res.statusCode}`));
             res.resume();
