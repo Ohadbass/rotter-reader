@@ -85,6 +85,13 @@
           >
             ▶ הקראה
           </button>
+          <button
+            id="tts-talkbacks-btn"
+            type="button"
+            class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-1.5 rounded-full transition-colors"
+          >
+            💬 קרא תגובות
+          </button>
           <span id="tts-status" class="text-sm text-gray-500"></span>
         </div>
         <div id="article-body" class="text-gray-800 leading-relaxed mb-6"></div>
@@ -135,9 +142,11 @@
     const talkbacksListEl = document.getElementById('talkbacks-list');
     const ttsControlsEl = document.getElementById('tts-controls');
     const ttsBtn = document.getElementById('tts-btn');
+    const ttsTalkbacksBtn = document.getElementById('tts-talkbacks-btn');
     const ttsStatusEl = document.getElementById('tts-status');
 
     let selectedRowEl = null;
+    let currentTalkbacks = [];
 
     function resolveUrl(href) {
       if (!href || href.startsWith('javascript:') || href === '#') return null;
@@ -372,6 +381,7 @@
       readerLoadingEl.classList.add('hidden');
       readerContentEl.classList.remove('hidden');
       ttsControlsEl.classList.remove('hidden');
+      currentTalkbacks = talkbacks;
 
       articleTitleEl.textContent = title || 'ללא כותרת';
       articleBodyEl.innerHTML = body
@@ -511,10 +521,19 @@
     fetchScoops();
 
     let isPlaying = false;
+    let isReadingTalkbacks = false;
     let currentAudioUrl = null;
 
     const TTS_PLAY_LABEL = '▶ הקראה';
     const TTS_STOP_LABEL = '⏹ עצור';
+    const TTS_TALKBACKS_LABEL = '💬 קרא תגובות';
+    const TTS_TALKBACKS_STOP_LABEL = '⏹ עצור תגובות';
+    const TTS_VOICES = ['he-IL-Wavenet-A', 'he-IL-Wavenet-B', 'he-IL-Wavenet-C', 'he-IL-Wavenet-D'];
+
+    function resetTalkbacksReading() {
+      isReadingTalkbacks = false;
+      ttsTalkbacksBtn.textContent = TTS_TALKBACKS_LABEL;
+    }
 
     function resetTtsButton() {
       ttsBtn.textContent = TTS_PLAY_LABEL;
@@ -527,6 +546,7 @@
       audio.pause();
       audio.currentTime = 0;
       resetTtsButton();
+      resetTalkbacksReading();
     }
 
     function buildReadableText() {
@@ -548,6 +568,7 @@
 
     async function startReading() {
       const audio = document.getElementById('tts-audio');
+      resetTalkbacksReading();
       audio.pause();
       audio.currentTime = 0;
 
@@ -608,9 +629,75 @@
       }
     }
 
+    async function readAllTalkbacks() {
+      if (currentTalkbacks.length === 0) return;
+
+      const audio = document.getElementById('tts-audio');
+      audio.pause();
+      audio.currentTime = 0;
+      resetTtsButton();
+
+      isReadingTalkbacks = true;
+      ttsTalkbacksBtn.textContent = TTS_TALKBACKS_STOP_LABEL;
+
+      for (const talkback of currentTalkbacks) {
+        if (!isReadingTalkbacks) break;
+
+        const randomVoice = TTS_VOICES[Math.floor(Math.random() * TTS_VOICES.length)];
+
+        try {
+          const response = await fetch('http://localhost:3001/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: talkback.comment, voice: randomVoice }),
+          });
+
+          if (!response.ok) throw new Error(await response.text());
+
+          const blob = await response.blob();
+          const audioUrl = URL.createObjectURL(blob);
+          if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+          currentAudioUrl = audioUrl;
+          audio.src = audioUrl;
+
+          await new Promise((resolve, reject) => {
+            audio.onended = () => {
+              if (currentAudioUrl) {
+                URL.revokeObjectURL(currentAudioUrl);
+                currentAudioUrl = null;
+              }
+              resolve();
+            };
+            audio.onerror = () => {
+              if (currentAudioUrl) {
+                URL.revokeObjectURL(currentAudioUrl);
+                currentAudioUrl = null;
+              }
+              reject(new Error('Audio playback error'));
+            };
+            audio.play().catch(reject);
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      resetTalkbacksReading();
+    }
+
     ttsBtn.addEventListener('click', () => {
       if (isPlaying) stopReading();
       else startReading();
+    });
+
+    ttsTalkbacksBtn.addEventListener('click', () => {
+      if (isReadingTalkbacks) {
+        const audio = document.getElementById('tts-audio');
+        audio.pause();
+        resetTalkbacksReading();
+      } else {
+        readAllTalkbacks();
+      }
     });
   </script>
   <audio id="tts-audio" preload="auto" hidden></audio>

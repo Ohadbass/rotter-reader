@@ -24,7 +24,7 @@ function readRequestBody(req) {
   });
 }
 
-function synthesizeSpeech(text) {
+function synthesizeSpeech(text, voiceName = 'he-IL-Wavenet-D') {
   return new Promise((resolve, reject) => {
     const apiKey = CONFIG.googleTtsApiKey;
     if (!apiKey) {
@@ -35,7 +35,7 @@ function synthesizeSpeech(text) {
     const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`;
     const body = JSON.stringify({
       input: { text },
-      voice: { languageCode: 'he-IL', name: 'he-IL-Wavenet-D' },
+      voice: { languageCode: 'he-IL', name: voiceName },
       audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0 },
     });
 
@@ -169,7 +169,8 @@ const server = http.createServer(async (req, res) => {
         text = text.slice(0, 4500);
       }
 
-      const audioBuffer = await synthesizeSpeech(text);
+      const voice = payload.voice || 'he-IL-Wavenet-D';
+      const audioBuffer = await synthesizeSpeech(text, voice);
       res.writeHead(200, {
         'Content-Type': 'audio/mpeg',
         'Access-Control-Allow-Origin': '*',
