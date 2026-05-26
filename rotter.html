@@ -156,7 +156,9 @@
             title = cells[cellIndex + 1].textContent.replace(/\s+/g, ' ').trim();
           }
           if (!title) continue;
-          if (title.includes('width') || title.startsWith('{') || title.includes('@media')) continue;
+          if (title.length < 4) continue;
+          if (['כותרות', 'הכותב', 'מכתב אחרון', 'תגובות', 'תג'].includes(title)) continue;
+          if (['{', '}', '@media', 'width:', 'px;', '.forum', 'font-size'].some((s) => title.includes(s))) continue;
 
           const author = cells[cellIndex + 1]?.textContent.replace(/\s+/g, ' ').trim() || '';
           const lastPost = cells[cellIndex + 2]?.textContent.replace(/\s+/g, ' ').trim() || '';
@@ -189,42 +191,52 @@
       return largest;
     }
 
-    function elementText(el) {
-      const paragraphs = el.querySelectorAll('p');
-      if (paragraphs.length > 0) {
-        return Array.from(paragraphs)
-          .map((p) => p.textContent.replace(/\s+/g, ' ').trim())
-          .filter(Boolean)
-          .join('\n\n');
+    function looksLikeNavOrCommentTable(table) {
+      const html = table.innerHTML.toLowerCase();
+      if (html.includes('login') || html.includes('listforum') || html.includes('az=search')) return true;
+
+      const rows = table.querySelectorAll('tr');
+      if (rows.length <= 10) return false;
+
+      let numberedRows = 0;
+      for (const row of rows) {
+        const first = row.querySelector('td');
+        if (first && /^\d+$/.test(first.textContent.trim())) numberedRows++;
       }
-      return el.textContent.replace(/\s+/g, ' ').trim();
+      return numberedRows > 5;
+    }
+
+    function isInsideNavOrCommentTable(el) {
+      let node = el.parentElement;
+      while (node) {
+        if (node.tagName === 'TABLE' && looksLikeNavOrCommentTable(node)) return true;
+        node = node.parentElement;
+      }
+      return false;
     }
 
     function extractArticleBody(doc) {
-      const byId = doc.querySelector('[id*="article" i]');
-      if (byId) {
-        const text = elementText(byId);
-        if (text.length > 50) return text;
+      const clone = doc.cloneNode(true);
+      clone.querySelectorAll('script, style, nav, header, footer').forEach((el) => el.remove());
+
+      const blocks = [];
+      for (const el of clone.querySelectorAll('td, font')) {
+        if (isInsideNavOrCommentTable(el)) continue;
+        const text = el.textContent.replace(/\s+/g, ' ').trim();
+        if (text.length > 80) blocks.push(text);
       }
 
-      const byClass = doc.querySelector('[class*="article" i]');
-      if (byClass) {
-        const text = elementText(byClass);
-        if (text.length > 50) return text;
-      }
+      blocks.sort((a, b) => b.length - a.length);
+      const uniqueBlocks = [...new Set(blocks)];
+      const joined = uniqueBlocks.slice(0, 3).join('\n\n');
+      if (joined.length > 100) return joined;
 
-      const byTag = doc.querySelector('div[id*="article" i], td[id*="article" i], div[class*="article" i], td[class*="article" i]');
-      if (byTag) {
-        const text = elementText(byTag);
-        if (text.length > 50) return text;
+      let bestText = '';
+      for (const el of clone.querySelectorAll('td, div')) {
+        const text = (el.innerText || el.textContent).replace(/\s+/g, ' ').trim();
+        if (text.length > bestText.length) bestText = text;
       }
-
-      let best = '';
-      for (const el of doc.querySelectorAll('div, td')) {
-        const text = elementText(el);
-        if (text.length > best.length) best = text;
-      }
-      return best;
+      return bestText;
     }
 
     function extractTalkbacks(doc) {
@@ -235,39 +247,38 @@
         if (row.querySelector('th')) continue;
 
         const cells = Array.from(row.querySelectorAll(':scope > td'));
-        if (cells.length < 2) continue;
+        if (cells.length < 3) continue;
+
+        const cellTexts = cells
+          .map((cell) => cell.textContent.replace(/\s+/g, ' ').trim())
+          .filter(Boolean);
+        if (cellTexts.length < 3) continue;
+
+        let comment = '';
+        let commentIdx = -1;
+        for (let i = 0; i < cellTexts.length; i++) {
+          if (cellTexts[i].length > comment.length) {
+            comment = cellTexts[i];
+            commentIdx = i;
+          }
+        }
+        if (comment.length <= 15) continue;
 
         let username = '';
-        let comment = '';
-
-        for (const cell of cells) {
-          const text = cell.textContent.replace(/\s+/g, ' ').trim();
-          if (!text) continue;
-
-          if (cell.querySelector('a[href*="user"], a[href*="user_profiles"]')) {
+        for (let i = 0; i < cellTexts.length; i++) {
+          if (i === commentIdx) continue;
+          const text = cellTexts[i];
+          if (text.length < 40 && !/^\d+$/.test(text)) {
             username = text;
-          } else if (text.length > comment.length) {
-            comment = text;
+            break;
           }
         }
 
-        if (!username || !comment) {
-          const texts = cells
-            .map((cell) => cell.textContent.replace(/\s+/g, ' ').trim())
-            .filter(Boolean)
-            .sort((a, b) => a.length - b.length);
+        if (!username || comment === username) continue;
 
-          if (texts.length >= 2 && texts[texts.length - 1].length > 20) {
-            username = texts[0];
-            comment = texts[texts.length - 1];
-          }
-        }
-
-        if (!username || !comment || username === comment || comment.length < 6) continue;
-
-        const key = `${username}|${comment.slice(0, 80)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
+        const prefix = comment.slice(0, 80);
+        if (seen.has(prefix)) continue;
+        seen.add(prefix);
 
         talkbacks.push({ username, comment });
         if (talkbacks.length >= 200) break;
@@ -339,7 +350,7 @@
       }
     }
 
-    async function loadArticle(url, rowEl) {
+    async function loadArticle(url, rowEl, listTitle) {
       highlightRow(rowEl);
       showReaderLoading();
 
@@ -359,7 +370,8 @@
         if (!html) throw new Error('לא התקבל תוכן מהשרת');
 
         const { title, body, talkbacks } = parseArticlePage(html);
-        showReaderArticle(title, body, talkbacks);
+        const displayTitle = !title || title.length < 4 ? listTitle : title;
+        showReaderArticle(displayTitle, body, talkbacks);
       } catch (err) {
         showReaderArticle('שגיאה', `שגיאה בטעינת הכתבה: ${err.message}`, []);
       }
@@ -383,7 +395,7 @@
           <td class="px-3 py-2 whitespace-nowrap">${escapeHtml(article.tagNumber)}</td>
         `;
 
-        row.addEventListener('click', () => loadArticle(article.url, row));
+        row.addEventListener('click', () => loadArticle(article.url, row, article.title));
         articlesBodyEl.appendChild(row);
       });
 
