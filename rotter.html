@@ -532,15 +532,10 @@
     function buildReadableText() {
       const clone = articleBodyEl.cloneNode(true);
 
-      clone.querySelectorAll('font, td, span').forEach((el) => {
-        const text = el.textContent.trim();
-        if (text.length > 80) return;
-        if (text.includes('חבר מתאריך')) {
-          el.remove();
-          return;
-        }
-        if (/^\d+\s+הודעות/.test(text) || /הודעות\s*$/.test(text) || text.includes('הודעות,')) {
-          el.remove();
+      clone.querySelectorAll('tr').forEach((tr) => {
+        const bgcolor = tr.getAttribute('bgcolor');
+        if (bgcolor && bgcolor.toLowerCase() === '#eeeeee') {
+          tr.remove();
         }
       });
 
