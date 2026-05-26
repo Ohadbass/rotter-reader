@@ -539,15 +539,6 @@
         }
       });
 
-      const metadataToRemove = [];
-      clone.querySelectorAll('*').forEach((el) => {
-        const text = el.textContent || '';
-        if (text.includes('חבר מתאריך') || /הודעות\s*\d/.test(text)) {
-          metadataToRemove.push(el);
-        }
-      });
-      metadataToRemove.forEach((el) => el.remove());
-
       const linkPrompts = ['לחץ כאן', 'Telegram', 'telegram', 'Click here', 'טוויטר', 'facebook', 'Facebook'];
       const arrowEnds = ['←', '→', '⇐', '⇒'];
 
