@@ -529,12 +529,41 @@
       resetTtsButton();
     }
 
+    function buildReadableText() {
+      const clone = articleBodyEl.cloneNode(true);
+
+      clone.querySelectorAll('table').forEach((el) => el.remove());
+
+      const metadataToRemove = [];
+      clone.querySelectorAll('*').forEach((el) => {
+        const text = el.textContent || '';
+        if (text.includes('חבר מתאריך') || /הודעות\s*\d/.test(text)) {
+          metadataToRemove.push(el);
+        }
+      });
+      metadataToRemove.forEach((el) => el.remove());
+
+      const linkPrompts = ['לחץ כאן', 'Telegram', 'telegram', 'Click here', 'טוויטר', 'facebook', 'Facebook'];
+      const arrowEnds = ['←', '→', '⇐', '⇒'];
+
+      clone.querySelectorAll('a').forEach((anchor) => {
+        const text = anchor.textContent.trim();
+        const hasPrompt = linkPrompts.some((substring) => text.includes(substring));
+        const isShortArrowLink = text.length < 60 && arrowEnds.some((arrow) => text.endsWith(arrow));
+        if (hasPrompt || isShortArrowLink) {
+          anchor.remove();
+        }
+      });
+
+      return clone.innerText.replace(/\n{2,}/g, '\n').trim();
+    }
+
     async function startReading() {
       const audio = document.getElementById('tts-audio');
       audio.pause();
       audio.currentTime = 0;
 
-      const text = `${articleTitleEl.textContent.trim()}. ${articleBodyEl.innerText.trim()}`;
+      const text = articleTitleEl.textContent + '. ' + buildReadableText();
       ttsBtn.textContent = '⏳ טוען...';
       ttsBtn.disabled = true;
       ttsStatusEl.textContent = '';
