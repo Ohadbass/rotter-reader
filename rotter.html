@@ -51,6 +51,11 @@
       display: block;
       margin-bottom: 8px;
     }
+    @media (max-width: 767px) {
+      .mobile-hidden {
+        display: none !important;
+      }
+    }
   </style>
 </head>
 <body class="bg-gray-50 h-screen flex flex-col overflow-hidden">
@@ -66,7 +71,7 @@
   </header>
 
   <div class="flex flex-1 min-h-0" dir="ltr">
-    <section id="reader-panel" class="flex-1 min-h-0 overflow-y-auto bg-gray-50" dir="rtl">
+    <section id="reader-panel" class="w-full md:w-auto flex-1 min-h-0 overflow-y-auto bg-gray-50" dir="rtl">
       <div id="reader-empty" class="flex items-center justify-center h-full text-gray-400 text-lg">
         בחר כתבה מהרשימה
       </div>
@@ -76,8 +81,15 @@
       </div>
 
       <div id="reader-content" class="hidden p-6 max-w-3xl mx-auto">
-        <h2 id="article-title" class="text-2xl font-bold mb-4"></h2>
-        <div id="tts-controls" class="hidden mb-4 flex items-center gap-3">
+        <button
+          id="back-btn"
+          type="button"
+          class="md:hidden w-full mb-4 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm px-4 py-2 rounded transition-colors"
+        >
+          → חזרה לרשימה
+        </button>
+        <h2 id="article-title" class="text-xl md:text-2xl font-bold mb-4"></h2>
+        <div id="tts-controls" class="hidden mb-4 flex flex-wrap items-center gap-3">
           <button
             id="tts-btn"
             type="button"
@@ -101,7 +113,7 @@
       </div>
     </section>
 
-    <aside class="w-[720px] min-w-[500px] flex-shrink-0 border-l border-gray-200 bg-white flex flex-col min-h-0 overflow-hidden" dir="rtl">
+    <aside class="w-full md:w-[720px] md:min-w-[500px] md:flex-shrink-0 border-l border-gray-200 bg-white flex flex-col min-h-0 overflow-hidden" dir="rtl">
       <div id="loading" class="flex justify-center items-center flex-1 py-12">
         <div class="spinner w-10 h-10 border-4 border-gray-300 border-t-blue-600 rounded-full"></div>
       </div>
@@ -137,6 +149,9 @@
     const readerEmptyEl = document.getElementById('reader-empty');
     const readerLoadingEl = document.getElementById('reader-loading');
     const readerContentEl = document.getElementById('reader-content');
+    const readerPanelEl = document.getElementById('reader-panel');
+    const listAsideEl = document.querySelector('aside');
+    const backBtn = document.getElementById('back-btn');
     const articleTitleEl = document.getElementById('article-title');
     const articleBodyEl = document.getElementById('article-body');
     const talkbacksListEl = document.getElementById('talkbacks-list');
@@ -452,7 +467,13 @@
           <td class="tag-cell px-2 py-2">${escapeHtml(article.tagNumber)}</td>
         `;
 
-        row.addEventListener('click', () => loadArticle(article.url, row, article.title));
+        row.addEventListener('click', () => {
+          loadArticle(article.url, row, article.title);
+          if (window.innerWidth < 768) {
+            readerPanelEl.classList.remove('mobile-hidden');
+            listAsideEl.classList.add('mobile-hidden');
+          }
+        });
         articlesBodyEl.appendChild(row);
       });
 
@@ -519,6 +540,20 @@
 
     refreshBtn.addEventListener('click', fetchScoops);
     fetchScoops();
+
+    function initMobileLayout() {
+      if (window.innerWidth < 768) {
+        readerPanelEl.classList.add('mobile-hidden');
+      }
+    }
+
+    backBtn.addEventListener('click', () => {
+      readerPanelEl.classList.add('mobile-hidden');
+      listAsideEl.classList.remove('mobile-hidden');
+      stopReading();
+    });
+
+    initMobileLayout();
 
     let isPlaying = false;
     let isReadingTalkbacks = false;
