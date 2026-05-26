@@ -83,7 +83,7 @@
             type="button"
             class="bg-gray-900 hover:bg-gray-700 text-white text-sm px-4 py-1.5 rounded-full transition-colors"
           >
-            ▶ הקריאה
+            ▶ הקראה
           </button>
           <span id="tts-status" class="text-sm text-gray-500"></span>
         </div>
@@ -507,68 +507,75 @@
     refreshBtn.addEventListener('click', fetchScoops);
     fetchScoops();
 
-    let isSpeaking = false;
-    let currentUtterance = null;
+    let currentAudio = null;
 
-    const TTS_PLAY_LABEL = '▶ הקריאה';
+    const TTS_PLAY_LABEL = '▶ הקראה';
     const TTS_STOP_LABEL = '⏹ עצור';
 
     function resetTtsButton() {
       ttsBtn.textContent = TTS_PLAY_LABEL;
-      isSpeaking = false;
-      currentUtterance = null;
+      ttsBtn.disabled = false;
     }
 
     function stopReading() {
-      window.speechSynthesis.cancel();
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+      }
       resetTtsButton();
     }
 
-    function startReading() {
-      window.speechSynthesis.cancel();
-
-      const title = articleTitleEl.textContent.trim();
-      const body = articleBodyEl.innerText.trim();
-      const combinedText = `${title}. ${body}`;
-
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length === 0) {
-        window.speechSynthesis.addEventListener(
-          'voiceschanged',
-          () => startReading(),
-          { once: true }
-        );
-        return;
+    async function startReading() {
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
       }
 
-      const utterance = new SpeechSynthesisUtterance(combinedText);
-      currentUtterance = utterance;
-      utterance.lang = 'he-IL';
+      const text = `${articleTitleEl.textContent.trim()}. ${articleBodyEl.innerText.trim()}`;
+      ttsBtn.textContent = '⏳ טוען...';
+      ttsBtn.disabled = true;
+      ttsStatusEl.textContent = '';
 
-      const hebrewVoice = voices.find((voice) => voice.lang.startsWith('he'));
-      if (hebrewVoice) utterance.voice = hebrewVoice;
+      try {
+        const response = await fetch('http://localhost:3001/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
 
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
+        if (!response.ok) throw new Error(await response.text());
 
-      utterance.onstart = () => {
-        ttsBtn.textContent = TTS_STOP_LABEL;
-        isSpeaking = true;
-      };
+        const blob = await response.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        currentAudio = new Audio(audioUrl);
 
-      utterance.onend = () => {
+        currentAudio.onplay = () => {
+          ttsBtn.textContent = TTS_STOP_LABEL;
+          ttsBtn.disabled = false;
+        };
+
+        currentAudio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          currentAudio = null;
+          resetTtsButton();
+        };
+
+        currentAudio.onerror = () => {
+          URL.revokeObjectURL(audioUrl);
+          currentAudio = null;
+          resetTtsButton();
+        };
+
+        await currentAudio.play();
+        ttsBtn.disabled = false;
+      } catch (err) {
         resetTtsButton();
-      };
-
-      utterance.onerror = () => {
-        resetTtsButton();
-      };
-
-      window.speechSynthesis.speak(utterance);
+        ttsStatusEl.textContent = err.message;
+      }
     }
 
     ttsBtn.addEventListener('click', () => {
-      if (isSpeaking) stopReading();
+      if (currentAudio && !currentAudio.paused) stopReading();
       else startReading();
     });
   </script>

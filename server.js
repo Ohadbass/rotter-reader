@@ -6,6 +6,74 @@ const path = require('path');
 const PORT = 3001;
 const ROTTER_URL = 'https://rotter.net/scoopscache.html';
 const HTML_FILE = path.join(__dirname, 'rotter.html');
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+
+let CONFIG = {};
+try {
+  CONFIG = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+} catch (err) {
+  console.warn('Warning: config.json not found — Google TTS will not work');
+}
+
+function readRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+function synthesizeSpeech(text) {
+  return new Promise((resolve, reject) => {
+    const apiKey = CONFIG.googleTtsApiKey;
+    if (!apiKey) {
+      reject(new Error('Google TTS API key not configured'));
+      return;
+    }
+
+    const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`;
+    const body = JSON.stringify({
+      input: { text },
+      voice: { languageCode: 'he-IL', name: 'he-IL-Wavenet-D' },
+      audioConfig: { audioEncoding: 'MP3', speakingRate: 1.0 },
+    });
+
+    const request = https.request(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const responseBody = Buffer.concat(chunks).toString('utf8');
+          if (res.statusCode >= 400) {
+            reject(new Error(responseBody || `HTTP ${res.statusCode}`));
+            return;
+          }
+
+          try {
+            const parsed = JSON.parse(responseBody);
+            resolve(Buffer.from(parsed.audioContent, 'base64'));
+          } catch (err) {
+            reject(err);
+          }
+        });
+        res.on('error', reject);
+      }
+    );
+
+    request.on('error', reject);
+    request.write(body);
+    request.end();
+  });
+}
 
 function fetchUrl(rawUrl, maxRedirects = 5) {
   if (maxRedirects <= 0) {
@@ -74,6 +142,45 @@ function serveRotterHtml(res) {
 
 const server = http.createServer(async (req, res) => {
   const pathname = req.url.split('?')[0];
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    });
+    res.end();
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/tts') {
+    try {
+      const rawBody = await readRequestBody(req);
+      const payload = JSON.parse(rawBody);
+      let text = payload.text;
+
+      if (!text) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Missing text field');
+        return;
+      }
+
+      if (text.length > 4500) {
+        text = text.slice(0, 4500);
+      }
+
+      const audioBuffer = await synthesizeSpeech(text);
+      res.writeHead(200, {
+        'Content-Type': 'audio/mpeg',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(audioBuffer);
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end(err.message);
+    }
+    return;
+  }
 
   if (req.method === 'GET' && pathname === '/scoops') {
     try {
