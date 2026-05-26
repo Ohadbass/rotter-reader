@@ -121,6 +121,7 @@
             title = cells[cellIndex + 1].textContent.replace(/\s+/g, ' ').trim();
           }
           if (!title) continue;
+          if (title.includes('width') || title.startsWith('{') || title.includes('@media')) continue;
 
           const author = cells[cellIndex + 1]?.textContent.replace(/\s+/g, ' ').trim() || '';
           const lastPost = cells[cellIndex + 2]?.textContent.replace(/\s+/g, ' ').trim() || '';

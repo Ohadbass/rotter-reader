@@ -52,9 +52,10 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && pathname === '/scoops') {
     try {
-      const html = await fetchRotterScoops();
+      const buffer = await fetchRotterScoops();
+      const html = new TextDecoder('windows-1255').decode(buffer);
       res.writeHead(200, {
-        'Content-Type': 'text/html',
+        'Content-Type': 'text/html; charset=utf-8',
         'Access-Control-Allow-Origin': '*',
       });
       res.end(html);
