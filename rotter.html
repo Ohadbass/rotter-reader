@@ -419,7 +419,10 @@
         const displayTitle = !title || title.length < 4 ? listTitle : title;
         showReaderArticle(displayTitle, body, talkbacks);
       } catch (err) {
-        showReaderArticle('שגיאה', `שגיאה בטעינת הכתבה: ${err.message}`, []);
+        console.error(err);
+        showReaderArticle(listTitle || 'שגיאה בטעינה', '', []);
+        articleBodyEl.innerHTML = '<p class="text-gray-500">שגיאה בטעינת הכתבה</p>';
+        ttsStatusEl.textContent = '';
       }
     }
 
@@ -507,7 +510,8 @@
     refreshBtn.addEventListener('click', fetchScoops);
     fetchScoops();
 
-    let currentAudio = null;
+    let isPlaying = false;
+    let currentAudioUrl = null;
 
     const TTS_PLAY_LABEL = '▶ הקראה';
     const TTS_STOP_LABEL = '⏹ עצור';
@@ -515,21 +519,20 @@
     function resetTtsButton() {
       ttsBtn.textContent = TTS_PLAY_LABEL;
       ttsBtn.disabled = false;
+      isPlaying = false;
     }
 
     function stopReading() {
-      if (currentAudio) {
-        currentAudio.pause();
-        currentAudio = null;
-      }
+      const audio = document.getElementById('tts-audio');
+      audio.pause();
+      audio.currentTime = 0;
       resetTtsButton();
     }
 
     async function startReading() {
-      if (currentAudio) {
-        currentAudio.pause();
-        currentAudio = null;
-      }
+      const audio = document.getElementById('tts-audio');
+      audio.pause();
+      audio.currentTime = 0;
 
       const text = `${articleTitleEl.textContent.trim()}. ${articleBodyEl.innerText.trim()}`;
       ttsBtn.textContent = '⏳ טוען...';
@@ -547,37 +550,52 @@
 
         const blob = await response.blob();
         const audioUrl = URL.createObjectURL(blob);
-        currentAudio = new Audio(audioUrl);
+        if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+        currentAudioUrl = audioUrl;
+        audio.src = audioUrl;
 
-        currentAudio.onplay = () => {
+        audio.onplay = () => {
+          isPlaying = true;
           ttsBtn.textContent = TTS_STOP_LABEL;
           ttsBtn.disabled = false;
         };
 
-        currentAudio.onended = () => {
-          URL.revokeObjectURL(audioUrl);
-          currentAudio = null;
+        audio.onended = () => {
+          if (currentAudioUrl) {
+            URL.revokeObjectURL(currentAudioUrl);
+            currentAudioUrl = null;
+          }
           resetTtsButton();
         };
 
-        currentAudio.onerror = () => {
-          URL.revokeObjectURL(audioUrl);
-          currentAudio = null;
+        audio.onerror = () => {
+          if (currentAudioUrl) {
+            URL.revokeObjectURL(currentAudioUrl);
+            currentAudioUrl = null;
+          }
           resetTtsButton();
         };
 
-        await currentAudio.play();
-        ttsBtn.disabled = false;
+        audio.play()
+          .then(() => {
+            ttsBtn.disabled = false;
+          })
+          .catch((err) => {
+            console.error(err);
+            resetTtsButton();
+          });
       } catch (err) {
+        console.error(err);
         resetTtsButton();
-        ttsStatusEl.textContent = err.message;
+        ttsStatusEl.textContent = 'שגיאה בהקראה';
       }
     }
 
     ttsBtn.addEventListener('click', () => {
-      if (currentAudio && !currentAudio.paused) stopReading();
+      if (isPlaying) stopReading();
       else startReading();
     });
   </script>
+  <audio id="tts-audio" preload="auto" hidden></audio>
 </body>
 </html>
