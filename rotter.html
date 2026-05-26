@@ -12,10 +12,14 @@
     .spinner {
       animation: spin 0.8s linear infinite;
     }
+    .row-selected {
+      background-color: rgb(239 246 255) !important;
+      border-left: 4px solid rgb(37 99 235);
+    }
   </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-  <header class="bg-gray-900 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow">
+<body class="bg-gray-50 h-screen flex flex-col overflow-hidden">
+  <header class="bg-gray-900 text-white px-4 py-3 flex items-center justify-between flex-shrink-0 z-20 shadow">
     <h1 class="text-lg font-bold">רוטר – סקופים</h1>
     <button
       id="refresh-btn"
@@ -26,29 +30,51 @@
     </button>
   </header>
 
-  <main class="p-4 max-w-full">
-    <p id="status" class="text-sm text-gray-500 mb-3 hidden"></p>
+  <div class="flex flex-1 min-h-0" dir="ltr">
+    <aside class="w-[420px] flex-shrink-0 border-r border-gray-200 bg-white flex flex-col min-h-0" dir="rtl">
+      <div class="p-3 flex-shrink-0">
+        <p id="status" class="text-sm text-gray-500 hidden"></p>
+      </div>
 
-    <div id="loading" class="flex justify-center items-center py-24">
-      <div class="spinner w-10 h-10 border-4 border-gray-300 border-t-blue-600 rounded-full"></div>
-    </div>
+      <div id="loading" class="flex justify-center items-center flex-1 py-12">
+        <div class="spinner w-10 h-10 border-4 border-gray-300 border-t-blue-600 rounded-full"></div>
+      </div>
 
-    <div id="error" class="hidden text-center py-24 text-red-600 font-medium"></div>
+      <div id="error" class="hidden text-center py-12 px-4 text-red-600 font-medium flex-1"></div>
 
-    <div id="table-wrap" class="hidden overflow-x-auto">
-      <table class="w-full border-collapse text-sm">
-        <thead class="sticky top-[52px] z-10">
-          <tr class="bg-gray-900 text-white">
-            <th class="text-right px-3 py-2 font-semibold border-b border-gray-700">כותרות</th>
-            <th class="text-right px-3 py-2 font-semibold border-b border-gray-700 whitespace-nowrap">כותב</th>
-            <th class="text-right px-3 py-2 font-semibold border-b border-gray-700 whitespace-nowrap">עדכון אחרון</th>
-            <th class="text-right px-3 py-2 font-semibold border-b border-gray-700 whitespace-nowrap">תגובות</th>
-          </tr>
-        </thead>
-        <tbody id="articles-body"></tbody>
-      </table>
-    </div>
-  </main>
+      <div id="table-wrap" class="hidden flex-1 overflow-y-auto overflow-x-auto min-h-0">
+        <table class="w-full border-collapse text-sm">
+          <thead class="sticky top-0 z-10">
+            <tr class="bg-gray-900 text-white">
+              <th class="text-right px-3 py-2 font-semibold border-b border-gray-700">כותרות</th>
+              <th class="text-right px-3 py-2 font-semibold border-b border-gray-700 whitespace-nowrap">כותב</th>
+              <th class="text-right px-3 py-2 font-semibold border-b border-gray-700 whitespace-nowrap">עדכון אחרון</th>
+              <th class="text-right px-3 py-2 font-semibold border-b border-gray-700 whitespace-nowrap">תגובות</th>
+            </tr>
+          </thead>
+          <tbody id="articles-body"></tbody>
+        </table>
+      </div>
+    </aside>
+
+    <section id="reader-panel" class="flex-1 min-h-0 overflow-y-auto bg-gray-50" dir="rtl">
+      <div id="reader-empty" class="flex items-center justify-center h-full text-gray-400 text-lg">
+        בחר כתבה מהרשימה
+      </div>
+
+      <div id="reader-loading" class="hidden flex items-center justify-center h-full">
+        <div class="spinner w-10 h-10 border-4 border-gray-300 border-t-blue-600 rounded-full"></div>
+      </div>
+
+      <div id="reader-content" class="hidden p-6 max-w-3xl mx-auto">
+        <h2 id="article-title" class="text-2xl font-bold mb-4"></h2>
+        <div id="article-body" class="text-gray-800 leading-relaxed whitespace-pre-wrap mb-6"></div>
+        <hr class="border-gray-300 my-6">
+        <h3 class="text-xl font-bold mb-4">תגובות</h3>
+        <div id="talkbacks-list" class="space-y-3"></div>
+      </div>
+    </section>
+  </div>
 
   <script>
     const BASE_URL = 'https://rotter.net';
@@ -59,6 +85,15 @@
     const articlesBodyEl = document.getElementById('articles-body');
     const statusEl = document.getElementById('status');
     const refreshBtn = document.getElementById('refresh-btn');
+
+    const readerEmptyEl = document.getElementById('reader-empty');
+    const readerLoadingEl = document.getElementById('reader-loading');
+    const readerContentEl = document.getElementById('reader-content');
+    const articleTitleEl = document.getElementById('article-title');
+    const articleBodyEl = document.getElementById('article-body');
+    const talkbacksListEl = document.getElementById('talkbacks-list');
+
+    let selectedRowEl = null;
 
     function resolveUrl(href) {
       if (!href || href.startsWith('javascript:') || href === '#') return null;
@@ -138,6 +173,118 @@
       return bestArticles;
     }
 
+    function extractArticleTitle(doc) {
+      const byId = doc.getElementById('article-title');
+      if (byId?.textContent.trim()) return byId.textContent.replace(/\s+/g, ' ').trim();
+
+      const h1 = doc.querySelector('h1');
+      if (h1?.textContent.trim()) return h1.textContent.replace(/\s+/g, ' ').trim();
+
+      const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      let largest = '';
+      for (const heading of headings) {
+        const text = heading.textContent.replace(/\s+/g, ' ').trim();
+        if (text.length > largest.length) largest = text;
+      }
+      return largest;
+    }
+
+    function elementText(el) {
+      const paragraphs = el.querySelectorAll('p');
+      if (paragraphs.length > 0) {
+        return Array.from(paragraphs)
+          .map((p) => p.textContent.replace(/\s+/g, ' ').trim())
+          .filter(Boolean)
+          .join('\n\n');
+      }
+      return el.textContent.replace(/\s+/g, ' ').trim();
+    }
+
+    function extractArticleBody(doc) {
+      const byId = doc.querySelector('[id*="article" i]');
+      if (byId) {
+        const text = elementText(byId);
+        if (text.length > 50) return text;
+      }
+
+      const byClass = doc.querySelector('[class*="article" i]');
+      if (byClass) {
+        const text = elementText(byClass);
+        if (text.length > 50) return text;
+      }
+
+      const byTag = doc.querySelector('div[id*="article" i], td[id*="article" i], div[class*="article" i], td[class*="article" i]');
+      if (byTag) {
+        const text = elementText(byTag);
+        if (text.length > 50) return text;
+      }
+
+      let best = '';
+      for (const el of doc.querySelectorAll('div, td')) {
+        const text = elementText(el);
+        if (text.length > best.length) best = text;
+      }
+      return best;
+    }
+
+    function extractTalkbacks(doc) {
+      const talkbacks = [];
+      const seen = new Set();
+
+      for (const row of doc.querySelectorAll('tr')) {
+        if (row.querySelector('th')) continue;
+
+        const cells = Array.from(row.querySelectorAll(':scope > td'));
+        if (cells.length < 2) continue;
+
+        let username = '';
+        let comment = '';
+
+        for (const cell of cells) {
+          const text = cell.textContent.replace(/\s+/g, ' ').trim();
+          if (!text) continue;
+
+          if (cell.querySelector('a[href*="user"], a[href*="user_profiles"]')) {
+            username = text;
+          } else if (text.length > comment.length) {
+            comment = text;
+          }
+        }
+
+        if (!username || !comment) {
+          const texts = cells
+            .map((cell) => cell.textContent.replace(/\s+/g, ' ').trim())
+            .filter(Boolean)
+            .sort((a, b) => a.length - b.length);
+
+          if (texts.length >= 2 && texts[texts.length - 1].length > 20) {
+            username = texts[0];
+            comment = texts[texts.length - 1];
+          }
+        }
+
+        if (!username || !comment || username === comment || comment.length < 6) continue;
+
+        const key = `${username}|${comment.slice(0, 80)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        talkbacks.push({ username, comment });
+        if (talkbacks.length >= 200) break;
+      }
+
+      return talkbacks;
+    }
+
+    function parseArticlePage(html) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      return {
+        title: extractArticleTitle(doc),
+        body: extractArticleBody(doc),
+        talkbacks: extractTalkbacks(doc),
+      };
+    }
+
     function formatFetchTime(date) {
       return date.toLocaleString('he-IL', {
         day: '2-digit',
@@ -147,6 +294,75 @@
         minute: '2-digit',
         second: '2-digit',
       });
+    }
+
+    function highlightRow(rowEl) {
+      if (selectedRowEl) selectedRowEl.classList.remove('row-selected');
+      selectedRowEl = rowEl;
+      rowEl.classList.add('row-selected');
+    }
+
+    function showReaderEmpty() {
+      readerEmptyEl.classList.remove('hidden');
+      readerLoadingEl.classList.add('hidden');
+      readerContentEl.classList.add('hidden');
+    }
+
+    function showReaderLoading() {
+      readerEmptyEl.classList.add('hidden');
+      readerLoadingEl.classList.remove('hidden');
+      readerContentEl.classList.add('hidden');
+    }
+
+    function showReaderArticle(title, body, talkbacks) {
+      readerEmptyEl.classList.add('hidden');
+      readerLoadingEl.classList.add('hidden');
+      readerContentEl.classList.remove('hidden');
+
+      articleTitleEl.textContent = title || 'ללא כותרת';
+      articleBodyEl.textContent = body || 'לא נמצא תוכן לכתבה.';
+
+      talkbacksListEl.innerHTML = '';
+      if (talkbacks.length === 0) {
+        talkbacksListEl.innerHTML = '<p class="text-gray-500">אין תגובות</p>';
+        return;
+      }
+
+      for (const talkback of talkbacks) {
+        const card = document.createElement('div');
+        card.className = 'bg-white border border-gray-200 rounded-lg p-4 shadow-sm';
+        card.innerHTML = `
+          <div class="font-bold text-gray-900 mb-1">${escapeHtml(talkback.username)}</div>
+          <div class="text-gray-700 whitespace-pre-wrap">${escapeHtml(talkback.comment)}</div>
+        `;
+        talkbacksListEl.appendChild(card);
+      }
+    }
+
+    async function loadArticle(url, rowEl) {
+      highlightRow(rowEl);
+      showReaderLoading();
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const response = await fetch(
+          `http://localhost:3001/article?url=${encodeURIComponent(url)}`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeoutId);
+
+        if (!response.ok) throw new Error(`שגיאת רשת (${response.status})`);
+
+        const html = await response.text();
+        if (!html) throw new Error('לא התקבל תוכן מהשרת');
+
+        const { title, body, talkbacks } = parseArticlePage(html);
+        showReaderArticle(title, body, talkbacks);
+      } catch (err) {
+        showReaderArticle('שגיאה', `שגיאה בטעינת הכתבה: ${err.message}`, []);
+      }
     }
 
     function renderArticles(articles, fetchedAt) {
@@ -167,7 +383,7 @@
           <td class="px-3 py-2 whitespace-nowrap">${escapeHtml(article.tagNumber)}</td>
         `;
 
-        row.addEventListener('click', () => window.open(article.url, '_blank', 'noopener'));
+        row.addEventListener('click', () => loadArticle(article.url, row));
         articlesBodyEl.appendChild(row);
       });
 

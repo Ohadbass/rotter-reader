@@ -7,11 +7,13 @@ const PORT = 3001;
 const ROTTER_URL = 'https://rotter.net/scoopscache.html';
 const HTML_FILE = path.join(__dirname, 'rotter.html');
 
-function fetchRotterScoops() {
+function fetchUrl(rawUrl) {
   return new Promise((resolve, reject) => {
-    https
+    const client = rawUrl.startsWith('https:') ? https : http;
+
+    client
       .get(
-        ROTTER_URL,
+        rawUrl,
         {
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; rotter-reader/1.0)',
@@ -34,6 +36,14 @@ function fetchRotterScoops() {
   });
 }
 
+function fetchRotterScoops() {
+  return fetchUrl(ROTTER_URL);
+}
+
+function isAllowedRotterUrl(url) {
+  return url.startsWith('https://rotter.net') || url.startsWith('http://rotter.net');
+}
+
 function serveRotterHtml(res) {
   fs.readFile(HTML_FILE, (err, data) => {
     if (err) {
@@ -53,6 +63,31 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && pathname === '/scoops') {
     try {
       const buffer = await fetchRotterScoops();
+      const html = new TextDecoder('windows-1255').decode(buffer);
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(html);
+    } catch (err) {
+      res.writeHead(502, { 'Content-Type': 'text/plain' });
+      res.end(err.message);
+    }
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/article') {
+    const requestUrl = new URL(req.url, `http://localhost:${PORT}`);
+    const articleUrl = requestUrl.searchParams.get('url');
+
+    if (!articleUrl || !isAllowedRotterUrl(articleUrl)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('Forbidden');
+      return;
+    }
+
+    try {
+      const buffer = await fetchUrl(articleUrl);
       const html = new TextDecoder('windows-1255').decode(buffer);
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
