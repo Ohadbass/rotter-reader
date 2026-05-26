@@ -51,7 +51,25 @@
   </main>
 
   <script>
-    const PROXY_URL = 'https://api.allorigins.win/get?url=https%3A%2F%2Frotter.net%2Fscoopscache.html';
+    const TARGET_URL = 'https://rotter.net/scoopscache.html';
+    const ENCODED_TARGET = encodeURIComponent(TARGET_URL);
+    const PROXIES = [
+      {
+        name: 'allorigins.win',
+        url: `https://api.allorigins.win/get?url=${ENCODED_TARGET}`,
+        type: 'json',
+      },
+      {
+        name: 'corsproxy.io',
+        url: `https://corsproxy.io/?${ENCODED_TARGET}`,
+        type: 'text',
+      },
+      {
+        name: 'thingproxy.freeboard.io',
+        url: `https://thingproxy.freeboard.io/fetch/${ENCODED_TARGET}`,
+        type: 'text',
+      },
+    ];
     const BASE_URL = 'https://rotter.net';
 
     const loadingEl = document.getElementById('loading');
@@ -207,11 +225,34 @@
       refreshBtn.disabled = true;
 
       try {
-        const response = await fetch(PROXY_URL);
-        if (!response.ok) throw new Error(`שגיאת רשת (${response.status})`);
+        let html = null;
 
-        const payload = await response.json();
-        const html = payload.contents;
+        for (const proxy of PROXIES) {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+          try {
+            const response = await fetch(proxy.url, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) throw new Error(`שגיאת רשת (${response.status})`);
+
+            if (proxy.type === 'json') {
+              const payload = await response.json();
+              html = payload.contents;
+            } else {
+              html = await response.text();
+            }
+
+            if (html && html.trim()) break;
+            throw new Error('לא התקבל תוכן מהשרת');
+          } catch (err) {
+            clearTimeout(timeoutId);
+            console.error(`Proxy ${proxy.name} failed:`, err);
+            html = null;
+          }
+        }
+
         if (!html) throw new Error('לא התקבל תוכן מהשרת');
 
         const articles = parseArticles(html);
