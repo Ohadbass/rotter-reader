@@ -51,25 +51,6 @@
   </main>
 
   <script>
-    const TARGET_URL = 'https://rotter.net/scoopscache.html';
-    const ENCODED_TARGET = encodeURIComponent(TARGET_URL);
-    const PROXIES = [
-      {
-        name: 'allorigins.win',
-        url: `https://api.allorigins.win/get?url=${ENCODED_TARGET}`,
-        type: 'json',
-      },
-      {
-        name: 'corsproxy.io',
-        url: `https://corsproxy.io/?${ENCODED_TARGET}`,
-        type: 'text',
-      },
-      {
-        name: 'thingproxy.freeboard.io',
-        url: `https://thingproxy.freeboard.io/fetch/${ENCODED_TARGET}`,
-        type: 'text',
-      },
-    ];
     const BASE_URL = 'https://rotter.net';
 
     const loadingEl = document.getElementById('loading');
@@ -225,34 +206,17 @@
       refreshBtn.disabled = true;
 
       try {
-        let html = null;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-        for (const proxy of PROXIES) {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const response = await fetch('http://localhost:3001/scoops', {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
 
-          try {
-            const response = await fetch(proxy.url, { signal: controller.signal });
-            clearTimeout(timeoutId);
+        if (!response.ok) throw new Error(`שגיאת רשת (${response.status})`);
 
-            if (!response.ok) throw new Error(`שגיאת רשת (${response.status})`);
-
-            if (proxy.type === 'json') {
-              const payload = await response.json();
-              html = payload.contents;
-            } else {
-              html = await response.text();
-            }
-
-            if (html && html.trim()) break;
-            throw new Error('לא התקבל תוכן מהשרת');
-          } catch (err) {
-            clearTimeout(timeoutId);
-            console.error(`Proxy ${proxy.name} failed:`, err);
-            html = null;
-          }
-        }
-
+        const html = await response.text();
         if (!html) throw new Error('לא התקבל תוכן מהשרת');
 
         const articles = parseArticles(html);
