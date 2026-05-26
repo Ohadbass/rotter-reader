@@ -28,6 +28,25 @@
       text-align: center;
       white-space: nowrap;
     }
+    #article-body img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin-top: 12px;
+      margin-bottom: 12px;
+    }
+    #article-body a {
+      color: blue;
+      text-decoration: underline;
+    }
+    #article-body p {
+      margin-bottom: 12px;
+      line-height: 1.7;
+    }
+    #article-body br {
+      display: block;
+      margin-bottom: 8px;
+    }
   </style>
 </head>
 <body class="bg-gray-50 h-screen flex flex-col overflow-hidden">
@@ -78,7 +97,7 @@
 
       <div id="reader-content" class="hidden p-6 max-w-3xl mx-auto">
         <h2 id="article-title" class="text-2xl font-bold mb-4"></h2>
-        <div id="article-body" class="text-gray-800 leading-relaxed whitespace-pre-wrap mb-6"></div>
+        <div id="article-body" class="text-gray-800 leading-relaxed mb-6"></div>
         <hr class="border-gray-300 my-6">
         <h3 class="text-xl font-bold mb-4">תגובות</h3>
         <div id="talkbacks-list" class="space-y-3"></div>
@@ -227,26 +246,22 @@
 
     function extractArticleBody(doc) {
       const clone = doc.cloneNode(true);
-      clone.querySelectorAll('script, style, nav, header, footer').forEach((el) => el.remove());
+      clone.querySelectorAll('script, style, iframe, nav, header, footer').forEach((el) => el.remove());
 
-      const blocks = [];
-      for (const el of clone.querySelectorAll('td, font')) {
-        if (isInsideNavOrCommentTable(el)) continue;
-        const text = el.textContent.replace(/\s+/g, ' ').trim();
-        if (text.length > 80) blocks.push(text);
+      for (const td of clone.querySelectorAll('td')) {
+        const text = td.textContent.replace(/\s+/g, ' ').trim();
+        if (text.length > 150 && !isInsideNavOrCommentTable(td)) {
+          let html = td.innerHTML;
+          html = html.replaceAll('src="/', 'src="https://rotter.net/');
+          html = html.replaceAll("src='/", "src='https://rotter.net/");
+          html = html.replaceAll('href="/', 'href="https://rotter.net/');
+          html = html.replaceAll("href='/", "href='https://rotter.net/");
+          html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+          return html;
+        }
       }
 
-      blocks.sort((a, b) => b.length - a.length);
-      const uniqueBlocks = [...new Set(blocks)];
-      const joined = uniqueBlocks.slice(0, 3).join('\n\n');
-      if (joined.length > 100) return joined;
-
-      let bestText = '';
-      for (const el of clone.querySelectorAll('td, div')) {
-        const text = (el.innerText || el.textContent).replace(/\s+/g, ' ').trim();
-        if (text.length > bestText.length) bestText = text;
-      }
-      return bestText;
+      return '';
     }
 
     function extractTalkbacks(doc) {
@@ -341,7 +356,9 @@
       readerContentEl.classList.remove('hidden');
 
       articleTitleEl.textContent = title || 'ללא כותרת';
-      articleBodyEl.textContent = body || 'לא נמצא תוכן לכתבה.';
+      articleBodyEl.innerHTML = body
+        ? body
+        : '<p class="text-gray-500">לא נמצא תוכן לכתבה.</p>';
 
       talkbacksListEl.innerHTML = '';
       if (talkbacks.length === 0) {
