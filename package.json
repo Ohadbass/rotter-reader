@@ -1,0 +1,7 @@
+{
+  "name": "rotter-reader",
+  "version": "1.0.1",
+  "scripts": {
+    "bump": "node scripts/bump-version.js"
+  }
+}

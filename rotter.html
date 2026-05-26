@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>רוטר – סקופים</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .spinner {
+      animation: spin 0.8s linear infinite;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <header class="bg-gray-900 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow">
+    <h1 class="text-lg font-bold">רוטר – סקופים</h1>
+    <button
+      id="refresh-btn"
+      type="button"
+      class="bg-gray-700 hover:bg-gray-600 px-4 py-1.5 rounded text-sm font-medium transition-colors"
+    >
+      רענן
+    </button>
+  </header>
+
+  <main class="p-4 max-w-full">
+    <p id="status" class="text-sm text-gray-500 mb-3 hidden"></p>
+
+    <div id="loading" class="flex justify-center items-center py-24">
+      <div class="spinner w-10 h-10 border-4 border-gray-300 border-t-blue-600 rounded-full"></div>
+    </div>
+
+    <div id="error" class="hidden text-center py-24 text-red-600 font-medium"></div>
+
+    <div id="table-wrap" class="hidden overflow-x-auto">
+      <table class="w-full border-collapse text-sm">
+        <thead class="sticky top-[52px] z-10">
+          <tr class="bg-gray-900 text-white">
+            <th class="text-right px-3 py-2 font-semibold border-b border-gray-700">כותרות</th>
+            <th class="text-right px-3 py-2 font-semibold border-b border-gray-700 whitespace-nowrap">כותב</th>
+            <th class="text-right px-3 py-2 font-semibold border-b border-gray-700 whitespace-nowrap">עדכון אחרון</th>
+            <th class="text-right px-3 py-2 font-semibold border-b border-gray-700 whitespace-nowrap">תגובות</th>
+          </tr>
+        </thead>
+        <tbody id="articles-body"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    const PROXY_URL = 'https://api.allorigins.win/get?url=https%3A%2F%2Frotter.net%2Fscoopscache.html';
+    const BASE_URL = 'https://rotter.net';
+
+    const loadingEl = document.getElementById('loading');
+    const errorEl = document.getElementById('error');
+    const tableWrapEl = document.getElementById('table-wrap');
+    const articlesBodyEl = document.getElementById('articles-body');
+    const statusEl = document.getElementById('status');
+    const refreshBtn = document.getElementById('refresh-btn');
+
+    function resolveUrl(href) {
+      if (!href || href.startsWith('javascript:') || href === '#') return null;
+      if (href.startsWith('http://') || href.startsWith('https://')) return href;
+      if (href.startsWith('/')) return BASE_URL + href;
+      return BASE_URL + '/' + href;
+    }
+
+    function findTitleAnchor(cells) {
+      for (let i = 0; i < Math.min(2, cells.length); i++) {
+        const anchor = cells[i].querySelector('a[href]');
+        if (anchor) return { cellIndex: i, anchor };
+      }
+      return null;
+    }
+
+    function findArticleUrl(row, anchor) {
+      const fromAnchor = resolveUrl(anchor.getAttribute('href'));
+      if (fromAnchor) return fromAnchor;
+
+      for (const link of row.querySelectorAll('a[href]')) {
+        const url = resolveUrl(link.getAttribute('href'));
+        if (url) return url;
+      }
+      return null;
+    }
+
+    function isFullWidthRow(cells, tableColCount) {
+      if (cells.length !== 1) return false;
+      const colspan = parseInt(cells[0].getAttribute('colspan') || '1', 10);
+      return colspan >= tableColCount || colspan >= 3;
+    }
+
+    function parseArticles(html) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const tables = doc.querySelectorAll('table');
+      let bestArticles = [];
+
+      for (const table of tables) {
+        const colCount = Math.max(
+          ...Array.from(table.querySelectorAll('tr')).map((row) => row.querySelectorAll(':scope > td, :scope > th').length),
+          0
+        );
+        const articles = [];
+
+        for (const row of table.querySelectorAll('tr')) {
+          const cells = row.querySelectorAll(':scope > td');
+          if (cells.length === 0) continue;
+          if (isFullWidthRow(cells, colCount)) continue;
+
+          const titleInfo = findTitleAnchor(cells);
+          if (!titleInfo) continue;
+
+          const { cellIndex, anchor } = titleInfo;
+          const url = findArticleUrl(row, anchor);
+          if (!url) continue;
+
+          let title = anchor.textContent.replace(/\s+/g, ' ').trim();
+          if (!title && cells[cellIndex + 1]) {
+            title = cells[cellIndex + 1].textContent.replace(/\s+/g, ' ').trim();
+          }
+          if (!title) continue;
+
+          const author = cells[cellIndex + 1]?.textContent.replace(/\s+/g, ' ').trim() || '';
+          const lastPost = cells[cellIndex + 2]?.textContent.replace(/\s+/g, ' ').trim() || '';
+          const tagNumber = cells[cellIndex + 3]?.textContent.replace(/\s+/g, ' ').trim() || '';
+
+          articles.push({ title, url, author, lastPost, tagNumber });
+        }
+
+        if (articles.length > bestArticles.length) {
+          bestArticles = articles;
+        }
+      }
+
+      return bestArticles;
+    }
+
+    function formatFetchTime(date) {
+      return date.toLocaleString('he-IL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+    }
+
+    function renderArticles(articles, fetchedAt) {
+      articlesBodyEl.innerHTML = '';
+
+      articles.forEach((article, index) => {
+        const row = document.createElement('tr');
+        row.className = [
+          index % 2 === 0 ? 'bg-white' : 'bg-gray-100',
+          'cursor-pointer hover:bg-blue-100 transition-colors border-b border-gray-200',
+        ].join(' ');
+        row.dataset.url = article.url;
+
+        row.innerHTML = `
+          <td class="px-3 py-2 font-medium">${escapeHtml(article.title)}</td>
+          <td class="px-3 py-2 whitespace-nowrap">${escapeHtml(article.author)}</td>
+          <td class="px-3 py-2 whitespace-nowrap">${escapeHtml(article.lastPost)}</td>
+          <td class="px-3 py-2 whitespace-nowrap">${escapeHtml(article.tagNumber)}</td>
+        `;
+
+        row.addEventListener('click', () => window.open(article.url, '_blank', 'noopener'));
+        articlesBodyEl.appendChild(row);
+      });
+
+      statusEl.textContent = `${articles.length} כתבות נטענו · עדכון אחרון: ${formatFetchTime(fetchedAt)}`;
+      statusEl.classList.remove('hidden');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function showLoading() {
+      loadingEl.classList.remove('hidden');
+      errorEl.classList.add('hidden');
+      tableWrapEl.classList.add('hidden');
+      statusEl.classList.add('hidden');
+    }
+
+    function showError(message) {
+      loadingEl.classList.add('hidden');
+      errorEl.textContent = message;
+      errorEl.classList.remove('hidden');
+      tableWrapEl.classList.add('hidden');
+      statusEl.classList.add('hidden');
+    }
+
+    function showTable() {
+      loadingEl.classList.add('hidden');
+      errorEl.classList.add('hidden');
+      tableWrapEl.classList.remove('hidden');
+    }
+
+    async function fetchScoops() {
+      showLoading();
+      refreshBtn.disabled = true;
+
+      try {
+        const response = await fetch(PROXY_URL);
+        if (!response.ok) throw new Error(`שגיאת רשת (${response.status})`);
+
+        const payload = await response.json();
+        const html = payload.contents;
+        if (!html) throw new Error('לא התקבל תוכן מהשרת');
+
+        const articles = parseArticles(html);
+        if (articles.length === 0) throw new Error('לא נמצאו כתבות בדף');
+
+        renderArticles(articles, new Date());
+        showTable();
+      } catch (err) {
+        showError(`שגיאה בטעינת הסקופים: ${err.message}`);
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    }
+
+    refreshBtn.addEventListener('click', fetchScoops);
+    fetchScoops();
+  </script>
+</body>
+</html>
