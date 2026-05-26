@@ -62,7 +62,25 @@
   </header>
 
   <div class="flex flex-1 min-h-0" dir="ltr">
-    <aside class="w-[420px] flex-shrink-0 border-r border-gray-200 bg-white flex flex-col min-h-0" dir="rtl">
+    <section id="reader-panel" class="flex-1 min-h-0 overflow-y-auto bg-gray-50" dir="rtl">
+      <div id="reader-empty" class="flex items-center justify-center h-full text-gray-400 text-lg">
+        בחר כתבה מהרשימה
+      </div>
+
+      <div id="reader-loading" class="hidden flex items-center justify-center h-full">
+        <div class="spinner w-10 h-10 border-4 border-gray-300 border-t-blue-600 rounded-full"></div>
+      </div>
+
+      <div id="reader-content" class="hidden p-6 max-w-3xl mx-auto">
+        <h2 id="article-title" class="text-2xl font-bold mb-4"></h2>
+        <div id="article-body" class="text-gray-800 leading-relaxed mb-6"></div>
+        <hr class="border-gray-300 my-6">
+        <h3 class="text-xl font-bold mb-4">תגובות</h3>
+        <div id="talkbacks-list" class="space-y-3"></div>
+      </div>
+    </section>
+
+    <aside class="w-[420px] flex-shrink-0 border-l border-gray-200 bg-white flex flex-col min-h-0" dir="rtl">
       <div class="p-3 flex-shrink-0">
         <p id="status" class="text-sm text-gray-500 hidden"></p>
       </div>
@@ -85,24 +103,6 @@
         </table>
       </div>
     </aside>
-
-    <section id="reader-panel" class="flex-1 min-h-0 overflow-y-auto bg-gray-50" dir="rtl">
-      <div id="reader-empty" class="flex items-center justify-center h-full text-gray-400 text-lg">
-        בחר כתבה מהרשימה
-      </div>
-
-      <div id="reader-loading" class="hidden flex items-center justify-center h-full">
-        <div class="spinner w-10 h-10 border-4 border-gray-300 border-t-blue-600 rounded-full"></div>
-      </div>
-
-      <div id="reader-content" class="hidden p-6 max-w-3xl mx-auto">
-        <h2 id="article-title" class="text-2xl font-bold mb-4"></h2>
-        <div id="article-body" class="text-gray-800 leading-relaxed mb-6"></div>
-        <hr class="border-gray-300 my-6">
-        <h3 class="text-xl font-bold mb-4">תגובות</h3>
-        <div id="talkbacks-list" class="space-y-3"></div>
-      </div>
-    </section>
   </div>
 
   <script>
