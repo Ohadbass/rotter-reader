@@ -87,25 +87,40 @@ def parse_host_discovery_xml(xml_text: str) -> list[dict]:
     return hosts
 
 
+CREDENTIAL_SCAN_SCRIPTS = (
+    "http-default-accounts,ftp-anon,snmp-brute,telnet-brute"
+)
+CREDENTIAL_SCRIPT_IDS = frozenset(
+    script.strip() for script in CREDENTIAL_SCAN_SCRIPTS.split(",")
+)
+
+
 def classify_default_creds(script_outputs: list[str]) -> str:
     if not script_outputs:
         return "UNKNOWN"
 
-    combined = "\n".join(script_outputs).lower()
-    positive = (
-        "valid credentials" in combined
-        or "valid creds" in combined
-        or "authentication succeeded" in combined
-        or "login succeeded" in combined
-        or ("default password" in combined and "found" in combined)
-    )
-    if positive:
-        return "YES"
+    combined_lower = "\n".join(script_outputs).lower()
 
-    if combined.strip():
+    failure_keywords = (
+        "failed",
+        "couldn't",
+        "could not",
+        "no valid",
+        "not allowed",
+        "denied",
+        "authentication failed",
+        "incorrect",
+        "unable to",
+        "not vulnerable",
+    )
+    if any(keyword in combined_lower for keyword in failure_keywords):
         return "NO"
 
-    return "UNKNOWN"
+    positive_keywords = ("valid", "login", "anonymous", "success")
+    if any(keyword in combined_lower for keyword in positive_keywords):
+        return "YES"
+
+    return "NO"
 
 
 def parse_service_scan_xml(xml_text: str) -> dict:
@@ -145,19 +160,23 @@ def parse_service_scan_xml(xml_text: str) -> dict:
         open_ports.append(f"{port_id}/{proto} — {service_desc}")
 
         for script in port.findall("script"):
-            if script.get("id") == "default-creds":
-                output = (script.get("output") or "").strip()
-                if output:
-                    script_outputs.append(output)
+            script_id = script.get("id")
+            if script_id not in CREDENTIAL_SCRIPT_IDS:
+                continue
+            output = (script.get("output") or "").strip()
+            if output:
+                script_outputs.append(f"[{script_id}] {output}")
 
-    for script in host.findall(".//script[@id='default-creds']"):
+    for script in host.findall(".//script"):
+        script_id = script.get("id")
+        if script_id not in CREDENTIAL_SCRIPT_IDS:
+            continue
         output = (script.get("output") or "").strip()
-        if output and output not in script_outputs:
-            script_outputs.append(output)
+        labeled = f"[{script_id}] {output}"
+        if output and labeled not in script_outputs:
+            script_outputs.append(labeled)
 
     default_creds = classify_default_creds(script_outputs)
-    if not open_ports and default_creds == "UNKNOWN":
-        default_creds = "NO"
 
     return {
         "open_ports": open_ports,
@@ -176,7 +195,7 @@ def discover_hosts(network_cidr: str) -> list[dict]:
 
 def scan_host(ip: str) -> dict:
     xml_out = run_command(
-        ["nmap", "-sV", "--script", "default-creds", ip, "-oX", "-"]
+        ["nmap", "-sV", "--script", CREDENTIAL_SCAN_SCRIPTS, ip, "-oX", "-"]
     )
     return parse_service_scan_xml(xml_out)
 
