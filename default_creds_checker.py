@@ -2,6 +2,7 @@
 """Check specific local devices for default HTTP credentials."""
 
 import sys
+from typing import Optional
 
 try:
     import requests
@@ -71,7 +72,7 @@ def is_port_reachable(url: str) -> bool:
         return False
 
 
-def try_basic_auth(url: str, username: str, password: str) -> requests.Response | None:
+def try_basic_auth(url: str, username: str, password: str) -> Optional[requests.Response]:
     try:
         return requests.get(
             url,
@@ -84,7 +85,7 @@ def try_basic_auth(url: str, username: str, password: str) -> requests.Response 
         return None
 
 
-def try_form_post(url: str, fields: dict[str, str]) -> requests.Response | None:
+def try_form_post(url: str, fields: dict[str, str]) -> Optional[requests.Response]:
     try:
         return requests.post(
             url,
